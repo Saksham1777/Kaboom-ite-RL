@@ -1,0 +1,13 @@
+# Ignore virtual environments
+gamedev/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore build artifacts
+build/
+
+# OS junk
+.DS_Store
+Thumbs.db
