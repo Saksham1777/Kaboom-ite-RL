@@ -35,9 +35,9 @@ def get_random_velocity(min_speed, max_speed):
     angle = random.randrange(0, 360)
     return Vector2(speed, 0).rotate(angle)
 
-def get_formatted_time(start_time):
+def get_formatted_time(current_time, start_time):
     """Calculates elapsed time and returns a string in MM:SS format"""
-    total_milliseconds = pygame.time.get_ticks() - start_time
+    total_milliseconds = current_time - start_time
     total_seconds = total_milliseconds // 1000
     
     minutes = total_seconds // 60

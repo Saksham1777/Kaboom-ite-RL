@@ -23,6 +23,7 @@ class SpaceRocks:
         # Start the game in a "Waiting" state 
         self.message = ""
         self.start_time = 0
+        self.virtual_time = 0.0 # rl train time
         self.score = 0
         self.spaceship = None
         self.bullets = []
@@ -66,7 +67,9 @@ class SpaceRocks:
         self.bullets = []
         self.asteroids = []
         self.power_up = []
-        self.start_time = pygame.time.get_ticks()
+        
+        self.start_time = 0
+        self.virtual_time = 0
 
         # rl
         self.current_step = 0
@@ -106,11 +109,14 @@ class SpaceRocks:
     def step(self, action):
         """Takes an action, advances the game one frame, and returns results."""
         
+        self.virtual_time += 1000 / 60.0
+        current_time = int(self.virtual_time)
+
         # Initialize frame events for the reward calculator
         self.current_events = {
             #'destroyed': 0,
-            'shield_hit': 0,
-            'powerup': 0,
+            #'shield_hit': 0,
+            #'powerup': 0,
             'died': False,
             #'fired': False
         }
@@ -120,11 +126,9 @@ class SpaceRocks:
                 pygame.quit()
                 sys.exit()
 
-        current_time = pygame.time.get_ticks()
-
         # Apply AI Action (if ship is alive)
         if not self.done and self.spaceship:
-            self.spaceship.apply_action(action, pygame.time.get_ticks(), self.start_time)
+            self.spaceship.apply_action(action, current_time, self.start_time)
 
         # Run Physics and Collisions
         self._process_game_logic(current_time)
@@ -295,12 +299,16 @@ class SpaceRocks:
         reward = 0.0 
         # penalty = 0.0 
 
+        if not self.done:
+            reward += 0.02
+
         #reward += self.current_events['destroyed'] * 10.0
         #reward += self.current_events['powerup'] * 6.0
         #reward += self.current_events['shield_hit'] * -8.0
 
         if self.current_events['died']:
             reward -= 20.0
+        
         #if self.current_events['fired']:
         #    reward -= 0.1   
 
@@ -320,8 +328,10 @@ class SpaceRocks:
             closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
             curr_dist = self.spaceship.position.distance_to(closest_ast.position)
 
-            if curr_dist < self.prev_closest_dist:
-                    reward += 0.1
+            if curr_dist > self.prev_closest_dist:
+                reward += 0.05 
+            elif curr_dist < self.prev_closest_dist:
+                reward -= 0.05
             self.prev_closest_dist = curr_dist
         
         return reward 
@@ -333,12 +343,13 @@ class SpaceRocks:
         if self.spaceship:
             self.spaceship.draw(self.screen)
 
+            current_time = int(self.virtual_time)
             time_str = get_formatted_time(self.start_time)
             text_time = self.ui_font.render(f"Time: {time_str}", True, (255, 255, 255))
             text_score = self.ui_font.render(f"Score: {self.score}", True, (255, 255, 255))
             
             status = "None"
-            if pygame.time.get_ticks() < self.power_up_expiry:
+            if current_time < self.power_up_expiry:
                 status = self.active_powerup_type
             
             power_up_str = self.ui_font.render(f"Active: {status}", True, (255, 255, 255))
