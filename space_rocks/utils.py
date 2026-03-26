@@ -29,22 +29,6 @@ def load_sprite(name, with_alpha=True):
         return surface.convert_alpha()
     return surface.convert()
 
-def load_sound(name):
-    """Loads a sound file. Checks for .wav first, then .mp3"""
-    path_wav = resource_path(os.path.join("space_rocks", "assets", "sounds", f"{name}.wav"))
-    path_mp3 = resource_path(os.path.join("space_rocks", "assets", "sounds", f"{name}.mp3"))
-    
-    if os.path.exists(path_wav):
-        return pygame.mixer.Sound(path_wav)
-    elif os.path.exists(path_mp3):
-        return pygame.mixer.Sound(path_mp3)
-    else:
-        print(f"Error: Could not find audio file {name} as .wav or .mp3")
-        # Return a dummy sound so the game doesn't crash immediately
-        return pygame.mixer.Sound(buffer=b'')
-
-# Fix for the ImportError: This makes load_sounds do the same thing as load_sound
-load_sounds = load_sound
 
 def get_random_velocity(min_speed, max_speed):
     speed = random.uniform(min_speed, max_speed)

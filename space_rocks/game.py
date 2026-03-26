@@ -1,14 +1,15 @@
 import pygame
 import random
+import numpy as np
 import sys
 from pygame.math import Vector2
-from utils import load_sprite, get_random_velocity, get_formatted_time, load_sounds
-from models import Spaceship, Asteroid, Bullet, PowerUp
+from utils import load_sprite, get_random_velocity, get_formatted_time
+from models import Spaceship, Asteroid, PowerUp
 
 class SpaceRocks:
-    MIN_ASTEROID_DISTANCE = 250
+    MIN_ASTEROID_DISTANCE = 250 
 
-    def __init__(self):
+    def __init__(self, render_mode=False):
         self.init_pygame()
         self.screen = pygame.display.set_mode((800,600))
         self.font = pygame.font.SysFont("arial.ttf", 64)
@@ -20,12 +21,12 @@ class SpaceRocks:
         self.background = pygame.transform.scale(og_background, (800, 600))
         
         # Start the game in a "Waiting" state 
-        self.message = "Welcome Player!! Press ENTER"
+        self.message = ""
         self.start_time = 0
         self.score = 0
-
         self.spaceship = None
         self.bullets = []
+        self.max_steps = 10000
 
         # asteroid
         self.asteroids = []
@@ -39,35 +40,38 @@ class SpaceRocks:
         self.active_powerup_type = ""
         self.power_up_expiry = 0
         self.last_power_up_spawn_time = 0
-        self.power_up_spawn_interval = 20000
+        self.power_up_spawn_interval = 10000
         self.power_up_lasts_interval = 5000
 
-        # sound
-        self.start_sound = load_sounds("igotthis")
-        self.diss_sound = load_sounds("disappointed")
-        self.die_sound = load_sounds("fahh")
-        self.bruh_sound = load_sounds("bruh")
-        self.wow_sound = load_sounds("wow")
-        self.gun_sound = load_sounds("gun")
-        self.blast_sound = load_sounds("blast")
-        self.blast_sound.set_volume(0.7)
+        # RL Episode Management
+        self.max_steps = 3000  # 3000 frames = ~50 seconds at 60fps
+        self.current_step = 0
+        self.done = False
+
+        self.render_mode = render_mode
+        if render_mode:
+            self.screen = pygame.display.set_mode((800, 600))
+        else:
+            self.screen = pygame.Surface((800, 600))
 
 
     def init_pygame(self):
         pygame.init()
         pygame.display.set_caption("Space Rocks")
 
-    def _start_game(self):
-        """Initializes or resets the game state"""
-        if self.start_sound:
-            self.start_sound.play()
+    def reset(self):
+        """Resets the environment for a new episode and returns initial observation."""
 
         self.spaceship = Spaceship((400,300), (0,0))
-        self.message = ""
         self.bullets = []
         self.asteroids = []
         self.power_up = []
         self.start_time = pygame.time.get_ticks()
+
+        # rl
+        self.current_step = 0
+        self.done = False
+        # self.closest_clean_dist = 25 use?
 
         # reset
         self.last_ast_spwan_time = self.start_time
@@ -77,7 +81,9 @@ class SpaceRocks:
         self.power_up_expiry = 0
         self.last_power_up_spawn_time = 0
         self.score = 0
+        self.active_powerup_type = ""
         
+        # spawn initial asteroids
         for _ in range(10):
             while True:
                 position = Vector2(random.randrange(800), random.randrange(600))
@@ -86,45 +92,64 @@ class SpaceRocks:
         
             velocity = get_random_velocity(self.asteroid_min_speed, self.asteroid_max_speed)
             self.asteroids.append(Asteroid(position, velocity))
+        
+        self.prev_ship_pos = Vector2(self.spaceship.position)
+        self.frames_still = 0
+        if self.asteroids:
+            closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
+            self.prev_closest_dist = self.spaceship.position.distance_to(closest_ast.position)
+        else:
+            self.prev_closest_dist = float('inf')
 
-    def main_loop(self):
-        while True:
-            self._handle_input()
-            self._process_game_logic()
-            self._draw()
+        return self._get_obs()
 
-    def _handle_input(self):
+    def step(self, action):
+        """Takes an action, advances the game one frame, and returns results."""
+        
+        # Initialize frame events for the reward calculator
+        self.current_events = {
+            #'destroyed': 0,
+            'shield_hit': 0,
+            'powerup': 0,
+            'died': False,
+            #'fired': False
+        }
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-            # Handle Enter to start or restart
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                if not self.spaceship:
-                    self._start_game()
-
-            # Only shoot if spaceship exists
-            if self.spaceship and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self.gun_sound.play()
-                self.bullets.append(self.spaceship.shoot())
-
-        # Movement input check
-        if self.spaceship:
-            is_key_pressed = pygame.key.get_pressed()
-            current_time = pygame.time.get_ticks()
-            move_dir = Vector2(0, 0)
-
-            if is_key_pressed[pygame.K_w]: move_dir.y -= 1
-            if is_key_pressed[pygame.K_s]: move_dir.y += 1
-            if is_key_pressed[pygame.K_a]: move_dir.x -= 1
-            if is_key_pressed[pygame.K_d]: move_dir.x += 1
-
-            if move_dir.length() > 0:
-                self.spaceship.accelerate(move_dir.normalize(), current_time, self.start_time)
-
-    def _process_game_logic(self):
         current_time = pygame.time.get_ticks()
+
+        # Apply AI Action (if ship is alive)
+        if not self.done and self.spaceship:
+            self.spaceship.apply_action(action, pygame.time.get_ticks(), self.start_time)
+
+        # Run Physics and Collisions
+        self._process_game_logic(current_time)
+
+        # Check step limits
+        self.current_step += 1
+        if self.current_step >= self.max_steps:
+            self.done = True
+
+        # Calculate results
+        reward = self._calculate_reward()
+        obs = self._get_obs()
+
+        survival_time_ms = current_time - self.start_time
+        info = {
+            'survival_time_ms': survival_time_ms,
+            'score': self.score,
+            'died': self.current_events['died']
+        }
+
+        # standard rl tuple : (observation, reward, done, info)
+        return obs, reward, self.done, info
+
+
+    def _process_game_logic(self, current_time:int):
 
         # Bullet movement and removal
         for bullet in self.bullets[:]:
@@ -137,21 +162,17 @@ class SpaceRocks:
         for asteroid in self.asteroids:
             asteroid.move(self.screen)
         
-        # Power up deswapn
-        if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
-            self.power_up.clear()
+        # Power-up spawn and despawn disabled to focus RL on survival
+        
+        # if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
+        #     self.power_up.clear()
 
-        # Power up spawn
-        if current_time > self.last_power_up_spawn_time + self.power_up_lasts_interval:
-            powerup_postion = Vector2(random.randint(100, 700), random.randint(100, 500))
-                
-            # Random selection of power up
-            types = ['penetration', 'shield']
-            selected_type = random.choice(types)
-
-            self.power_up.append(PowerUp(powerup_postion, selected_type))
-            
-            self.last_power_up_spawn_time = current_time
+        # if current_time > self.last_power_up_spawn_time + self.power_up_spawn_interval:
+        #     powerup_postion = Vector2(random.randint(100, 700), random.randint(100, 500))
+        #     types = ['penetration', 'shield']
+        #     selected_type = random.choice(types)
+        #     self.power_up.append(PowerUp(powerup_postion, selected_type))
+        #     self.last_power_up_spawn_time = current_time
         
 
         # Bullet-Asteroid collision
@@ -159,7 +180,8 @@ class SpaceRocks:
             for bullet in self.bullets[:]:
                 if bullet.position.distance_to(asteroid.position) < asteroid.radius:
                     self.score += 1
-                    self.blast_sound.play()
+                    # shooting not defined yet for base rl
+                    #self.current_events['destroyed'] += 1 # LOG EVENT
                     self.asteroids.remove(asteroid)
                     
                     is_penetrating = (self.active_powerup_type == "penetration" and current_time < self.power_up_expiry)
@@ -170,38 +192,36 @@ class SpaceRocks:
                     break
         
         # Spaceship-Asteroid Collision 
-        if self.spaceship:
-            for asteroid in self.asteroids:
+        if not self.done and self.spaceship:
+            for asteroid in self.asteroids[:]:
                 if asteroid.collision_with(self.spaceship):
                     
                     is_shield_active = (self.active_powerup_type == "shield" and current_time < self.power_up_expiry)
 
                     if not is_shield_active:
-                        # Play random death sound
-                        sounds = [self.diss_sound, self.die_sound, self.bruh_sound]
-                        random.choice(sounds).play()
-
-                        final_time = get_formatted_time(self.start_time)
-                        self.spaceship = None 
-                        self.message = f"GAME OVER! Score: {self.score} | Time: {final_time}"
+                        self.done = True # Set flag instead of destroying spaceship
+                        self.current_events['died'] = True # LOG EVENT
                         break
                     else:
                         self.asteroids.remove(asteroid)
-                        self.blast_sound.play()
+                        self.current_events['shield_hit'] += 1 # LOG EVENT
                         # Allowing multi hit shield
 
         # Spaceship-PowerUp Collision 
-        if self.spaceship: 
-            for p in self.power_up[:]:
-                if self.spaceship.collision_with(p):
-                    self.active_powerup_type = p.type 
-                    self.power_up_expiry = current_time + self.power_up_lasts_interval
-                    self.power_up.remove(p)
-                    self.wow_sound.play()
+        
+        # Disabled power-up collision detection
+        
+        # if not self.done and self.spaceship: 
+        #     for p in self.power_up[:]:
+        #         if self.spaceship.collision_with(p):
+        #             self.active_powerup_type = p.type 
+        #             self.power_up_expiry = current_time + self.power_up_lasts_interval
+        #             self.current_events['powerup'] += 1 # LOG EVENT
+        #             self.power_up.remove(p)
 
+        
         # Spaceship logic (Only if it exists)
-        if self.spaceship:
-            self.spaceship.rotate_to_mouse()
+        if not self.done and self.spaceship:
             self.spaceship.update()
             self.spaceship.move(self.screen)
 
@@ -224,14 +244,92 @@ class SpaceRocks:
                 if self.ast_spawn_interval > 1200:
                     self.ast_spawn_interval -= 100
                 
-                if self.asteroid_max_speed < 10:
+                # allowing max update of seed to be 10
+                if self.asteroid_max_speed < 10: 
                     self.asteroid_min_speed += 0.05
-                    self.asteroid_max_speed += 0.1           
+                    self.asteroid_max_speed += 0.1 
+    
+    def _get_obs(self):
+        """Returns the state of the game for the AI to 'see'."""
+        
+        if self.spaceship:
+            ship_x = self.spaceship.position.x / 800
+            ship_y = self.spaceship.position.y / 600
 
-    def _draw(self):
+            # base max speed is 10 but allowed to increase to 12 in 50 sec
+            ship_vel_x = self.spaceship.velocity.x / 12
+            ship_vel_y = self.spaceship.velocity.y / 12
+
+            ship_sin, ship_cos = self.spaceship.get_angle_obs()
+        else:
+            ship_x, ship_y, ship_vel_x, ship_vel_y, ship_sin, ship_cos = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+        if self.asteroids and self.spaceship:
+            # TO DO
+            # can be made better to 3 closest soon
+            closest_ast = min(self.asteroids, key=lambda ast: self.spaceship.position.distance_to(ast.position))
+
+            rel_x = (closest_ast.position.x - self.spaceship.position.x) / 800
+            rel_y = (closest_ast.position.y - self.spaceship.position.y) / 600
+
+            ast_vel_x = closest_ast.velocity.x / 10 
+            ast_vel_y = closest_ast.velocity.y / 10
+        else:
+            # If no asteroids or ship is dead
+            rel_x, rel_y, ast_vel_x, ast_vel_y = 0.0, 0.0, 0.0, 0.0
+        
+        obs = [
+            ship_x, ship_y,
+            ship_vel_x, ship_vel_y,
+            ship_sin, ship_cos,
+            rel_x, rel_y,
+            ast_vel_x, ast_vel_y
+        ]
+
+        # rl req float32
+        return np.array(obs, dtype = np.float32)
+
+
+    def _calculate_reward(self):
+        """Returns the points earned (or lost) on this specific frame."""
+        reward = 0.0 
+        # penalty = 0.0 
+
+        #reward += self.current_events['destroyed'] * 10.0
+        #reward += self.current_events['powerup'] * 6.0
+        #reward += self.current_events['shield_hit'] * -8.0
+
+        if self.current_events['died']:
+            reward -= 20.0
+        #if self.current_events['fired']:
+        #    reward -= 0.1   
+
+        if self.spaceship and not self.done:
+            
+            if self.spaceship.position.distance_to(self.prev_ship_pos) < 0.5:
+                    self.frames_still += 1
+            else:
+                self.frames_still = 0   
+            
+            if self.frames_still > 60: 
+                reward -= 0.5
+
+            self.prev_ship_pos = Vector2(self.spaceship.position)
+        
+        if self.asteroids:
+            closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
+            curr_dist = self.spaceship.position.distance_to(closest_ast.position)
+
+            if curr_dist < self.prev_closest_dist:
+                    reward += 0.1
+            self.prev_closest_dist = curr_dist
+        
+        return reward 
+
+    def render(self):
         self.screen.blit(self.background, (0,0))
 
-        # Only draw player if alive
+        # Only if player is alive
         if self.spaceship:
             self.spaceship.draw(self.screen)
 

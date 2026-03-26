@@ -3,6 +3,7 @@ import pygame
 from pygame.math import Vector2
 from pygame.transform import rotozoom
 from utils import load_sprite
+import math
 
 UP = Vector2(0, -1)
 
@@ -43,50 +44,98 @@ class GameObject:
         return distance_bw < self.radius + other_obj.radius
     
 class Spaceship(GameObject):
-    
+   
     _base_sprite = None
-    
 
+    ROTATE_SMALL = math.radians(5)
+    ROTATE_BIG = math.radians(15)
+
+    # action id mapping
+    ACTION_NOOP      = 0
+    ACTION_FORWARD   = 1
+    ACTION_BACKWARD  = 2 
+    ACTION_ROT_L_SM  = 3
+    ACTION_ROT_R_SM  = 4
+    ACTION_ROT_L_BG  = 5
+    ACTION_ROT_R_BG  = 6
+    # ACTION_SHOOT   = 7  -- uncomment when ready
+    N_ACTIONS        = 7
+
+    
     def __init__(self, position, velocity):
         if Spaceship._base_sprite is None:
             Spaceship._base_sprite = pygame.transform.scale(
                 load_sprite("spaceship"), (50, 50)
             )
         super().__init__(position, Spaceship._base_sprite, velocity)
-        self.angle = 0
+        
+        self.angle_rad = 0.0
+
+        # physics constants
         self.base_acc = 0.4
         self.friction = 0.94
         self.max_base_speed = 10
     
-    def rotate_to_mouse(self):
-        mouse_pos = pygame.mouse.get_pos()
-        diff = Vector2(mouse_pos) - self.position
-        self.angle = Vector2(0,-1).angle_to(diff)
     
-    def draw(self, surface):
-        rotated_surface = pygame.transform.rotozoom(self.sprite, -self.angle, 1.0)
-        rotated_rect = rotated_surface.get_rect(center=self.position)
-        surface.blit(rotated_surface, rotated_rect)
+    def apply_action(self, action: int, current_time: int, start_time: int):
+        if action == self.ACTION_NOOP:
+            pass
+        elif action == self.ACTION_FORWARD:
+            self.apply_thrust(1,current_time, start_time)
+        elif action == self.ACTION_BACKWARD:
+            self.apply_thrust(-1, current_time, start_time)
+        elif action == self.ACTION_ROT_L_SM:
+            self.rotate(-self.ROTATE_SMALL)        
+        elif action == self.ACTION_ROT_R_SM:
+            self.rotate(+self.ROTATE_SMALL)         
+        elif action == self.ACTION_ROT_L_BG:
+            self.rotate(-self.ROTATE_BIG)           
+        elif action == self.ACTION_ROT_R_BG:
+            self.rotate(+self.ROTATE_BIG)           
+        # elif action == self.ACTION_SHOOT:
+        #     return self.shoot()
+
+
+    def rotate(self, delta_rad: float):
+        # Helper to update angle and keep it within 0-359 range.
+        self.angle_rad += delta_rad
+        self.angle_rad = math.atan2(math.sin(self.angle_rad), math.cos(self.angle_rad))
+
+    def get_direction(self):
+        # unit vector of curr dir - used by acc + shoot
+        return Vector2(math.sin(self.angle_rad), -math.cos(self.angle_rad))
     
-    def accelerate(self, direction_vector, current_time, start_time):
-        self.velocity += direction_vector * self.base_acc
+    def get_angle_obs(self):
+        # tuple output for rl observer
+        return math.sin(self.angle_rad), math.cos(self.angle_rad)
+    
+    def apply_thrust(self, factor, current_time, start_time):
+        # acc - forward and backward combined code
+        # +1 for forward, -1 for backward
+        direction = self.get_direction()
+        self.velocity += direction * (self.base_acc * factor)
 
-        # gradually increase max speed over time
-        elapsed_ms = current_time - start_time
-        speed_growth = elapsed_ms / 25000   # grows every 25 seconds
-
-        max_speed = self.max_base_speed + speed_growth
+        # dynamic speed logic
+        elapsed_time = current_time - start_time
+        max_speed = self.max_base_speed + elapsed_time / 25000
 
         if self.velocity.length() > max_speed:
             self.velocity.scale_to_length(max_speed)
-    
+
     def update(self):
         self.velocity *= self.friction
 
     def shoot(self):
-        bullet_velocity = Vector2(0,-1).rotate(self.angle) * 12
+        direction = self.get_direction()
+        bullet_velocity = direction * 12
         bullet_position = self.position # start at spaceship position
         return Bullet(bullet_position, bullet_velocity)
+
+    def draw(self, surface):
+        angle_deg = math.degrees(self.angle_rad)
+        rotated_surface = pygame.transform.rotozoom(self.sprite, -angle_deg, 1.0)
+        rotated_rect = rotated_surface.get_rect(center=self.position)
+        surface.blit(rotated_surface, rotated_rect)
 
 class Asteroid(GameObject):
 
