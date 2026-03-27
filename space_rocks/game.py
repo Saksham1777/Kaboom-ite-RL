@@ -301,20 +301,22 @@ class SpaceRocks:
     def _calculate_reward(self):
         """Returns the points earned (or lost) on this specific frame."""
         # Initialize components
-        comp = {"survival": 0.0, "death": 0.0, "distance": 0.0, "still_penalty": 0.0}
+        comp = {"survival": 0.0, "death": 0.0, "distance": 0.0, "still_penalty": 0.0, "escape_reward": 0.0,}
         
         reward = 0.0
 
-        if not self.done:
+        # death reward 
+        if self.current_events['died']:
+            comp["death"] = -100.0
+            self.last_reward_components = comp
+            return -100.0
+
+        if self.spaceship and not self.done:
             comp["survival"] = 0.02
 
         #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
         #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
-
-        if self.current_events['died']:
-            comp["death"] = -50.0
-            self.last_reward_components = comp
-            return -50.0
+        
         
         #if self.current_events.get('fired', False):
         #   comp["shooting_penalty"] = -0.1  
@@ -329,7 +331,16 @@ class SpaceRocks:
                 closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
                 curr_dist = self.spaceship.position.distance_to(closest_ast.position)
 
-                if curr_dist < 150:
+                if curr_dist < 250:
+                    
+                    # vector of rock to ship
+                    away_from_rock = (self.spaceship.position - closest_ast.position).normalize()
+
+                    # dot product of vel to see if it points away 
+                    # +1 = perfectly opp, -1 = same direction
+                    escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
+                    comp["escape_reward"] = escape_direction_score * 0.1 # reward for flying away
+
                     comp["distance"] = -(150 - curr_dist) / 1000.0
         
         self.last_reward_components = comp

@@ -5,13 +5,13 @@ from game_env import SpaceRocksEnv
 def main():
     # 1. Load the trained model
     # SB3 automatically looks for 'spacerocks_ai_v1.zip'
-    model_name = "spacerocks_ai_v1"
+    model_name = "spacerocks_ai_v2"
     
     try:
         model = PPO.load(model_name)
         print(f"Successfully loaded {model_name}. Let's see what it learned!")
     except Exception as e:
-        print(f"Error: Could not find the model file. Did you run train.py?")
+        print(f"Error: Could not find the model file.")
         return
 
     # 2. Initialize the environment in 'human' mode
@@ -35,7 +35,7 @@ def main():
             
             # If the ship hits an asteroid or reaches max steps, reset
             if terminated or truncated:
-                print(f"Episode Finished. Score: {info['score']}")
+                print(f"Episode Finished. Score: {info['score']}. Time: {info['survival_time_ms']}")
                 obs, info = env.reset()
                 
     except KeyboardInterrupt:
