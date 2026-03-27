@@ -48,6 +48,7 @@ class SpaceRocks:
         self.max_steps = 3000  # 3000 frames = ~50 seconds at 60fps
         self.current_step = 0
         self.done = False
+        self.truncated = False
 
         self.render_mode = render_mode
         if render_mode:
@@ -74,6 +75,7 @@ class SpaceRocks:
         # rl
         self.current_step = 0
         self.done = False
+        self.truncated = False
         # self.closest_clean_dist = 25 use?
 
         # reset
@@ -136,6 +138,7 @@ class SpaceRocks:
         # Check step limits
         self.current_step += 1
         if self.current_step >= self.max_steps:
+            self.truncated = False
             self.done = True
 
         # Calculate results
@@ -146,7 +149,8 @@ class SpaceRocks:
         info = {
             'survival_time_ms': survival_time_ms,
             'score': self.score,
-            'died': self.current_events['died']
+            'died': self.current_events['died'],
+            'reward_components': self.last_reward_components
         }
 
         # standard rl tuple : (observation, reward, done, info)
@@ -296,45 +300,40 @@ class SpaceRocks:
 
     def _calculate_reward(self):
         """Returns the points earned (or lost) on this specific frame."""
-        reward = 0.0 
-        # penalty = 0.0 
+        # Initialize components
+        comp = {"survival": 0.0, "death": 0.0, "distance": 0.0, "still_penalty": 0.0}
+        
+        reward = 0.0
 
         if not self.done:
-            reward += 0.02
+            comp["survival"] = 0.02
 
-        #reward += self.current_events['destroyed'] * 10.0
-        #reward += self.current_events['powerup'] * 6.0
-        #reward += self.current_events['shield_hit'] * -8.0
+        #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
+        #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
         if self.current_events['died']:
-            reward -= 20.0
+            comp["death"] = -50.0
+            self.last_reward_components = comp
+            return -50.0
         
-        #if self.current_events['fired']:
-        #    reward -= 0.1   
+        #if self.current_events.get('fired', False):
+        #   comp["shooting_penalty"] = -0.1  
 
-        if self.spaceship and not self.done:
-            
-            if self.spaceship.position.distance_to(self.prev_ship_pos) < 0.5:
-                    self.frames_still += 1
-            else:
-                self.frames_still = 0   
-            
+        if self.spaceship and not self.done:            
             if self.frames_still > 60: 
-                reward -= 0.5
+                comp["still_penalty"] = -0.5
 
             self.prev_ship_pos = Vector2(self.spaceship.position)
         
-        if self.asteroids:
-            closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
-            curr_dist = self.spaceship.position.distance_to(closest_ast.position)
+            if self.asteroids:
+                closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
+                curr_dist = self.spaceship.position.distance_to(closest_ast.position)
 
-            if curr_dist > self.prev_closest_dist:
-                reward += 0.05 
-            elif curr_dist < self.prev_closest_dist:
-                reward -= 0.05
-            self.prev_closest_dist = curr_dist
+                if curr_dist < 150:
+                    comp["distance"] = -(150 - curr_dist) / 1000.0
         
-        return reward 
+        self.last_reward_components = comp
+        return sum(comp.values()) 
 
     def render(self):
         self.screen.blit(self.background, (0,0))
@@ -344,7 +343,7 @@ class SpaceRocks:
             self.spaceship.draw(self.screen)
 
             current_time = int(self.virtual_time)
-            time_str = get_formatted_time(self.start_time)
+            time_str = get_formatted_time(current_time, self.start_time)
             text_time = self.ui_font.render(f"Time: {time_str}", True, (255, 255, 255))
             text_score = self.ui_font.render(f"Score: {self.score}", True, (255, 255, 255))
             
