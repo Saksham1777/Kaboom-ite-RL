@@ -40,7 +40,7 @@ class SpaceRocksCallback(BaseCallback):
 
 # MAIN TRAIN LOOP
 
-version = 3
+version = 4
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
@@ -61,7 +61,7 @@ model = PPO(
 # 4. Train with the Callback
 print("Training started. Open TensorBoard to see results.")
 model.learn(
-    total_timesteps=300000, 
+    total_timesteps=200000, 
     callback=SpaceRocksCallback(),
     tb_log_name=f"PPO_run_{version}"
 )
