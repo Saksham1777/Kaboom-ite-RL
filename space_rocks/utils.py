@@ -3,6 +3,7 @@ import pygame
 import sys
 import os
 from pygame.math import Vector2
+import math
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -44,3 +45,31 @@ def get_formatted_time(current_time, start_time):
     seconds = total_seconds % 60
     
     return f"{minutes:02}:{seconds:02}"
+
+def get_toroidal_distance(pos1, pos2, width=800, height=600):
+    dx = abs(pos1.x - pos2.x)
+    dy = abs(pos1.y - pos2.y)
+
+    # The shortest path: directly across OR wrapped around the edge
+    dx = min(dx, width - dx)
+    dy = min(dy, height - dy)
+
+    return math.sqrt(dx**2 + dy**2)
+
+def get_toroidal_vector(ship_pos, ast_pos, width=800, height=600):
+    dx = ship_pos.x - ast_pos.x
+    dy = ship_pos.y - ast_pos.y
+
+    # Wrap X to find the shortest directional push
+    if dx > width / 2: 
+        dx -= width
+    elif dx < -width / 2: 
+        dx += width
+        
+    # Wrap Y
+    if dy > height / 2: 
+        dy -= height
+    elif dy < -height / 2: 
+        dy += height
+
+    return Vector2(dx, dy)

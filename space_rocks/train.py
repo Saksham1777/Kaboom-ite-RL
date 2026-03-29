@@ -40,13 +40,17 @@ class SpaceRocksCallback(BaseCallback):
 
 # MAIN TRAIN LOOP
 
-version = 6
+version = 9
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
 
 # 2. Setup Environment
 env = SpaceRocksEnv(render_mode=None)
+
+policy_kwargs = dict(
+    net_arch=dict(pi=[256, 256], vf=[256, 256])
+)
 
 # 3. Initialize Model (PPO)
 model = PPO(
@@ -55,7 +59,9 @@ model = PPO(
     verbose=1, 
     tensorboard_log=log_dir,
     learning_rate=3e-4,
-    n_steps=2048 # Collect 2048 frames before updating
+    n_steps=2048, # Collect 2048 frames before updating
+    ent_coef=0.01,
+    policy_kwargs=policy_kwargs
 )
 
 # 4. Train with the Callback

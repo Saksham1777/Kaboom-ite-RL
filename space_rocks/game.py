@@ -3,7 +3,7 @@ import random
 import numpy as np
 import sys
 from pygame.math import Vector2
-from utils import load_sprite, get_random_velocity, get_formatted_time
+from utils import load_sprite, get_random_velocity, get_formatted_time, get_toroidal_distance,get_toroidal_vector
 from models import Spaceship, Asteroid, PowerUp
 
 class SpaceRocks:
@@ -276,20 +276,34 @@ class SpaceRocks:
 
         # 3 closest asteroid calculations
         if self.asteroids and self.spaceship:
-            sorted_asteroids = sorted(self.asteroids[:], key = lambda ast: self.spaceship.position.distance_to(ast.position))
+            sorted_asteroids = sorted(self.asteroids[:], key = lambda ast: get_toroidal_distance(self.spaceship.position, ast.position))
             
             for i in range(3):
                 if i < len(sorted_asteroids):
                     ast = sorted_asteroids[i]
 
-                    ast_x = ast.position.x / 800
-                    ast_y = ast.position.y / 600
+                    # Calculate absolute pixel difference first
+                    px_rel_x = ast.position.x - self.spaceship.position.x
+                    px_rel_y = ast.position.y - self.spaceship.position.y
+
+                    # Toroidal Wrap for X (800 width)
+                    if px_rel_x > 400:
+                        px_rel_x -= 800
+                    elif px_rel_x < -400:
+                        px_rel_x += 800
+
+                    # Toroidal Wrap for Y (600 height)
+                    if px_rel_y > 300:
+                        px_rel_y -= 600
+                    elif px_rel_y < -300:
+                        px_rel_y += 600
+
+                    # Normalize the wrapped relative distances
+                    rel_x = px_rel_x / 800.0
+                    rel_y = px_rel_y / 600.0
                     
-                    ast_vel_x = ast.velocity.x / 10
-                    ast_vel_y = ast.velocity.y / 10
-                    
-                    rel_x = ast_x - ship_x
-                    rel_y = ast_y - ship_y
+                    ast_vel_x = ast.velocity.x / 10.0
+                    ast_vel_y = ast.velocity.y / 10.0
                 
                     asteroid_obs.extend([
                         rel_x, rel_y, 
@@ -324,7 +338,7 @@ class SpaceRocks:
             "distance": 0.0, 
             "still_penalty": 0.0, 
             "escape_reward": 0.0,
-            "center_penalty" : 0.0
+            "center_reward" : 0.0
         }
 
         # death reward 
@@ -339,12 +353,12 @@ class SpaceRocks:
             # center - bias reward/penalty - soft circular barier
             center_position = (400,300)
             safe_rad = 300
+            max_distance = 500
 
             distance_from_center = self.spaceship.position.distance_to(center_position)
 
-            if distance_from_center > safe_rad:
-                excess_distance = distance_from_center - safe_rad
-                comp["center_penalty"] = - excess_distance / 1000
+            # Gives +0.1 at the center, tapering to 0 at the edges
+            comp["center_reward"] = max(0, 0.1 * (1.0 - (distance_from_center / max_distance)))
 
         #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
         #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
@@ -354,29 +368,33 @@ class SpaceRocks:
         #   comp["shooting_penalty"] = -0.1  
 
         if self.spaceship and not self.done:            
-            if self.frames_still > 60: 
-                comp["still_penalty"] = -0.1
+            #if self.frames_still > 60: 
+            #    comp["still_penalty"] = -0.01
         
             if self.asteroids:
                 sorted_asteroids = sorted(
                     self.asteroids, 
-                     key=lambda ast: self.spaceship.position.distance_to(ast.position)
+                     key=lambda ast: get_toroidal_distance(self.spaceship.position, ast.position)
                 )[:3]
 
                 for i, ast in enumerate(sorted_asteroids):
 
-                    dist = self.spaceship.position.distance_to(ast.position)
+                    dist = get_toroidal_distance(self.spaceship.position, ast.position)
 
                     # float weights to closest asteroids
                     # 100% for 1st, 50% for 2nd, 33% for 3rd
-                    w = 10.0 / (i + 1.0)
+                    w = 1.0 / (i + 1.0)
 
-                    if dist < 250:
+                    if dist < 150:
 
-                        comp["distance"] -= ((250 - dist) / 1000.0 ) * w
+                        comp["distance"] -= ((150 - dist) / 1000.0 ) * w
                     
                         # vector of rock to ship
-                        away_from_rock = (self.spaceship.position - ast.position).normalize()
+                        toroidal_vec = get_toroidal_vector(self.spaceship.position, ast.position)
+                        if toroidal_vec.length() > 0: # Prevent division by zero
+                            away_from_rock = toroidal_vec.normalize()
+                        else:
+                            away_from_rock = Vector2(0, 0)
 
                         # dot product of vel to see if it points away 
                         # +1 = perfectly opp, -1 = same direction
@@ -429,15 +447,20 @@ class SpaceRocks:
         self.clock.tick(60)
 
     def add_asteroid(self):
-        side = random.randint(0, 3)
-        if side == 0: # Top
-            position = Vector2(random.randrange(800), -40)
-        elif side == 1: # Bottom
-            position = Vector2(random.randrange(800), 640)
-        elif side == 2: # Left
-            position = Vector2(-40, random.randrange(600))
-        else: # Right
-            position = Vector2(840, random.randrange(600))
+        while True:
+            side = random.randint(0, 3)
+            if side == 0: # Top
+                position = Vector2(random.randrange(800), -40)
+            elif side == 1: # Bottom
+                position = Vector2(random.randrange(800), 640)
+            elif side == 2: # Left
+                position = Vector2(-40, random.randrange(600))
+            else: # Right
+                position = Vector2(840, random.randrange(600))
 
-        velocity = get_random_velocity(self.asteroid_min_speed, self.asteroid_max_speed)
-        self.asteroids.append(Asteroid(position, velocity))
+            # Ensure it doesn't wrap-spawn on top of the ship
+            if get_toroidal_distance(self.spaceship.position, position) > self.MIN_ASTEROID_DISTANCE:
+                break
+
+            velocity = get_random_velocity(self.asteroid_min_speed, self.asteroid_max_speed)
+            self.asteroids.append(Asteroid(position, velocity))
