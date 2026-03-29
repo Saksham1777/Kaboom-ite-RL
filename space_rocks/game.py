@@ -98,7 +98,7 @@ class SpaceRocks:
             velocity = get_random_velocity(self.asteroid_min_speed, self.asteroid_max_speed)
             self.asteroids.append(Asteroid(position, velocity))
         
-        self.prev_ship_pos = Vector2(self.spaceship.position)
+
         self.frames_still = 0
         if self.asteroids:
             closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
@@ -272,27 +272,44 @@ class SpaceRocks:
         else:
             ship_x, ship_y, ship_vel_x, ship_vel_y, ship_sin, ship_cos = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
+        asteroid_obs = []
+
+        # 3 closest asteroid calculations
         if self.asteroids and self.spaceship:
-            # TO DO
-            # can be made better to 3 closest soon
-            closest_ast = min(self.asteroids, key=lambda ast: self.spaceship.position.distance_to(ast.position))
+            sorted_asteroids = sorted(self.asteroids[:], key = lambda ast: self.spaceship.position.distance_to(ast.position))
+            
+            for i in range(3):
+                if i < len(sorted_asteroids):
+                    ast = sorted_asteroids[i]
 
-            rel_x = (closest_ast.position.x - self.spaceship.position.x) / 800
-            rel_y = (closest_ast.position.y - self.spaceship.position.y) / 600
-
-            ast_vel_x = closest_ast.velocity.x / 10 
-            ast_vel_y = closest_ast.velocity.y / 10
-        else:
-            # If no asteroids or ship is dead
-            rel_x, rel_y, ast_vel_x, ast_vel_y = 0.0, 0.0, 0.0, 0.0
+                    ast_x = ast.position.x / 800
+                    ast_y = ast.position.y / 600
+                    
+                    ast_vel_x = ast.velocity.x / 10
+                    ast_vel_y = ast.velocity.y / 10
+                    
+                    rel_x = ast_x - ship_x
+                    rel_y = ast_y - ship_y
+                
+                    asteroid_obs.extend([
+                        rel_x, rel_y, 
+                        ast_vel_x, ast_vel_y
+                    ])
+                
+                else: 
+                    asteroid_obs.extend([0.0 ,0.0 ,0.0, 0.0])
         
-        obs = [
+        else: 
+            asteroid_obs = [0.0] * 12
+
+
+        ship_obs = [
             ship_x, ship_y,
             ship_vel_x, ship_vel_y,
-            ship_sin, ship_cos,
-            rel_x, rel_y,
-            ast_vel_x, ast_vel_y
+            ship_sin, ship_cos
         ]
+
+        obs = ship_obs + asteroid_obs        
 
         # rl req float32
         return np.array(obs, dtype = np.float32)
@@ -301,9 +318,14 @@ class SpaceRocks:
     def _calculate_reward(self):
         """Returns the points earned (or lost) on this specific frame."""
         # Initialize components
-        comp = {"survival": 0.0, "death": 0.0, "distance": 0.0, "still_penalty": 0.0, "escape_reward": 0.0,}
-        
-        reward = 0.0
+        comp = {
+            "survival": 0.0, 
+            "death": 0.0, 
+            "distance": 0.0, 
+            "still_penalty": 0.0, 
+            "escape_reward": 0.0,
+            "center_penalty" : 0.0
+        }
 
         # death reward 
         if self.current_events['died']:
@@ -312,7 +334,17 @@ class SpaceRocks:
             return -100.0
 
         if self.spaceship and not self.done:
-            comp["survival"] = 0.02
+            comp["survival"] = 0.2
+
+            # center - bias reward/penalty - soft circular barier
+            center_position = (400,300)
+            safe_rad = 300
+
+            distance_from_center = self.spaceship.position.distance_to(center_position)
+
+            if distance_from_center > safe_rad:
+                excess_distance = distance_from_center - safe_rad
+                comp["center_penalty"] = - excess_distance / 1000
 
         #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
         #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
@@ -323,25 +355,35 @@ class SpaceRocks:
 
         if self.spaceship and not self.done:            
             if self.frames_still > 60: 
-                comp["still_penalty"] = -0.5
-
-            self.prev_ship_pos = Vector2(self.spaceship.position)
+                comp["still_penalty"] = -0.1
         
             if self.asteroids:
-                closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
-                curr_dist = self.spaceship.position.distance_to(closest_ast.position)
+                sorted_asteroids = sorted(
+                    self.asteroids, 
+                     key=lambda ast: self.spaceship.position.distance_to(ast.position)
+                )[:3]
 
-                if curr_dist < 250:
+                for i, ast in enumerate(sorted_asteroids):
+
+                    dist = self.spaceship.position.distance_to(ast.position)
+
+                    # float weights to closest asteroids
+                    # 100% for 1st, 50% for 2nd, 33% for 3rd
+                    w = 10.0 / (i + 1.0)
+
+                    if dist < 250:
+
+                        comp["distance"] -= ((250 - dist) / 1000.0 ) * w
                     
-                    # vector of rock to ship
-                    away_from_rock = (self.spaceship.position - closest_ast.position).normalize()
+                        # vector of rock to ship
+                        away_from_rock = (self.spaceship.position - ast.position).normalize()
 
-                    # dot product of vel to see if it points away 
-                    # +1 = perfectly opp, -1 = same direction
-                    escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
-                    comp["escape_reward"] = escape_direction_score * 0.1 # reward for flying away
+                        # dot product of vel to see if it points away 
+                        # +1 = perfectly opp, -1 = same direction
+                        # reward for flying away
+                        escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
+                        comp["escape_reward"] += escape_direction_score * 0.1 * w
 
-                    comp["distance"] = -(150 - curr_dist) / 1000.0
         
         self.last_reward_components = comp
         return sum(comp.values()) 

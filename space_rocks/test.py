@@ -5,7 +5,7 @@ from game_env import SpaceRocksEnv
 def main():
     # 1. Load the trained model
     # SB3 automatically looks for 'spacerocks_ai_v1.zip'
-    model_name = "spacerocks_ai_v2"
+    model_name = "spacerocks_ai_v6"
     
     try:
         model = PPO.load(model_name)

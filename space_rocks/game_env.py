@@ -19,7 +19,7 @@ class SpaceRocksEnv(gym.Env):
         self.observation_space = spaces.Box(
             low = -np.inf,
             high=np.inf, 
-            shape=(10,), 
+            shape=(18,), # 6 -> spaceship, 4 per asteroid x 3 asteroids 
             dtype=np.float32
         )
 
