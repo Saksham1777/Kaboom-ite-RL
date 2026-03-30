@@ -352,7 +352,6 @@ class SpaceRocks:
 
             # center - bias reward/penalty - soft circular barier
             center_position = (400,300)
-            safe_rad = 300
             max_distance = 500
 
             distance_from_center = self.spaceship.position.distance_to(center_position)

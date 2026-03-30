@@ -40,7 +40,14 @@ class SpaceRocksCallback(BaseCallback):
 
 # MAIN TRAIN LOOP
 
-version = 9
+def linear_schedule(start_lr: float, end_lr: float):
+    def func(progress_remaining: float) -> float:
+        # When progress_remaining is 1, return start_lr
+        # When progress_remaining is 0, return end_lr
+        return end_lr + (start_lr - end_lr) * progress_remaining
+    return func
+
+version = 15
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
@@ -58,10 +65,12 @@ model = PPO(
     env, 
     verbose=1, 
     tensorboard_log=log_dir,
-    learning_rate=3e-4,
+    learning_rate=linear_schedule(start_lr=5e-4, end_lr=1e-4),
     n_steps=2048, # Collect 2048 frames before updating
+    batch_size = 64,
+    n_epochs = 10,
     ent_coef=0.01,
-    policy_kwargs=policy_kwargs
+    policy_kwargs=policy_kwargs,
 )
 
 # 4. Train with the Callback
