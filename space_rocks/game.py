@@ -142,7 +142,7 @@ class SpaceRocks:
             self.done = True
 
         # Calculate results
-        reward = self._calculate_reward()
+        reward = self._calculate_reward(action)
         obs = self._get_obs()
 
         survival_time_ms = current_time - self.start_time
@@ -329,14 +329,14 @@ class SpaceRocks:
         return np.array(obs, dtype = np.float32)
 
 
-    def _calculate_reward(self):
+    def _calculate_reward(self, action):
         """Returns the points earned (or lost) on this specific frame."""
         # Initialize components
         comp = {
             "survival": 0.0, 
             "death": 0.0, 
             "distance": 0.0, 
-            "still_penalty": 0.0, 
+            "movement_penalty": 0.0, 
             "escape_reward": 0.0,
             "center_reward" : 0.0
         }
@@ -350,14 +350,25 @@ class SpaceRocks:
         if self.spaceship and not self.done:
             comp["survival"] = 0.2
 
+            if action != 0:
+                comp["movement_penalty"] = -0.01 
+            else:
+                comp["movement_penalty"] = 0.0
+
             # center - bias reward/penalty - soft circular barier
             center_position = (400,300)
             max_distance = 500
+            safe_zone = 250
 
             distance_from_center = self.spaceship.position.distance_to(center_position)
 
-            # Gives +0.1 at the center, tapering to 0 at the edges
-            comp["center_reward"] = max(0, 0.1 * (1.0 - (distance_from_center / max_distance)))
+            if distance_from_center < safe_zone:
+                comp["center_reward"] = 0.1
+            else:
+                max_taper_range = max_distance - safe_zone
+                taper_distance = distance_from_center - safe_zone
+                comp["center_reward"] =  max(0, 0.1 * (1.0 - (taper_distance / max_taper_range)))
+
 
         #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
         #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
@@ -367,8 +378,7 @@ class SpaceRocks:
         #   comp["shooting_penalty"] = -0.1  
 
         if self.spaceship and not self.done:            
-            #if self.frames_still > 60: 
-            #    comp["still_penalty"] = -0.01
+            comp["still_penalty"] = +0.001
         
             if self.asteroids:
                 sorted_asteroids = sorted(
