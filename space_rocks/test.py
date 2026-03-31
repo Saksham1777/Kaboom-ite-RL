@@ -1,15 +1,18 @@
 import gymnasium as gym
 from stable_baselines3 import PPO
 from game_env import SpaceRocksEnv
+import os
 
 def main():
-    # 1. Load the trained model
-    # SB3 automatically looks for 'spacerocks_ai_v1.zip'
-    model_name = "spacerocks_ai_v19"
+
+    version_to_test = 26
+    models_dir = "./saved_models/"
+    
+    model_path = os.path.join(models_dir, f"spacerocks_ai_v{version_to_test}")
     
     try:
-        model = PPO.load(model_name)
-        print(f"Successfully loaded {model_name}. Let's see what it learned!")
+        model = PPO.load(model_path)
+        print(f"Successfully loaded {model_path}. Let's see what it learned!")
     except Exception as e:
         print(f"Error: Could not find the model file.")
         return

@@ -57,6 +57,7 @@ def get_toroidal_distance(pos1, pos2, width=800, height=600):
     return math.sqrt(dx**2 + dy**2)
 
 def get_toroidal_vector(ship_pos, ast_pos, width=800, height=600):
+    """always return ship to asteorid vector"""
     dx = ship_pos.x - ast_pos.x
     dy = ship_pos.y - ast_pos.y
 

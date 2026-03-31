@@ -31,7 +31,7 @@ class SpaceRocks:
 
         # asteroid
         self.asteroids = []
-        self.last_ast_spwan_time = 0
+        self.last_ast_spawn_time = 0
         self.ast_spawn_interval = 3000
         self.asteroid_min_speed = 1
         self.asteroid_max_speed = 3
@@ -43,6 +43,12 @@ class SpaceRocks:
         self.last_power_up_spawn_time = 0
         self.power_up_spawn_interval = 10000
         self.power_up_lasts_interval = 5000
+
+        # bullet
+        self.last_shot_time = 0
+        self.shoot_cooldown = 300
+        self.ep_shot_fired = 0
+        self.ep_asteroids_hit = 0
 
         # RL Episode Management
         self.max_steps = 3000  # 3000 frames = ~50 seconds at 60fps
@@ -79,14 +85,19 @@ class SpaceRocks:
         # self.closest_clean_dist = 25 use?
 
         # reset
-        self.last_ast_spwan_time = self.start_time
+        self.last_ast_spawn_time = self.start_time
         self.ast_spawn_interval = 3000
         self.asteroid_min_speed = 1
         self.asteroid_max_speed = 3
+        
         self.power_up_expiry = 0
         self.last_power_up_spawn_time = 0
-        self.score = 0
         self.active_powerup_type = ""
+        
+        self.score = 0
+        self.last_shot_time = 0
+        self.ep_shot_fired = 0
+        self.ep_asteroids_hit = 0
         
         # spawn initial asteroids
         for _ in range(10):
@@ -99,7 +110,6 @@ class SpaceRocks:
             self.asteroids.append(Asteroid(position, velocity))
         
 
-        self.frames_still = 0
         if self.asteroids:
             closest_ast = min(self.asteroids, key=lambda a: self.spaceship.position.distance_to(a.position))
             self.prev_closest_dist = self.spaceship.position.distance_to(closest_ast.position)
@@ -116,11 +126,11 @@ class SpaceRocks:
 
         # Initialize frame events for the reward calculator
         self.current_events = {
-            #'destroyed': 0,
+            'destroyed': 0,
             #'shield_hit': 0,
             #'powerup': 0,
             'died': False,
-            #'fired': False
+            'fired': False
         }
         
         for event in pygame.event.get():
@@ -130,7 +140,19 @@ class SpaceRocks:
 
         # Apply AI Action (if ship is alive)
         if not self.done and self.spaceship:
-            self.spaceship.apply_action(action, current_time, self.start_time)
+            if action == self.spaceship.ACTION_SHOOT:
+                # post cooldown time post last shot
+                if current_time > self.last_shot_time + self.shoot_cooldown:
+                    # bullet can be considered
+                    bullet = self.spaceship.apply_action(action, current_time, self.start_time)
+                    if bullet:
+                        self.ep_shot_fired += 1
+                        self.last_shot_time = current_time
+                        self.bullets.append(bullet)
+                        self.current_events['fired'] = True
+                        
+            else:    
+                self.spaceship.apply_action(action, current_time, self.start_time)
 
         # Run Physics and Collisions
         self._process_game_logic(current_time)
@@ -138,7 +160,7 @@ class SpaceRocks:
         # Check step limits
         self.current_step += 1
         if self.current_step >= self.max_steps:
-            self.truncated = False
+            self.truncated = True
             self.done = True
 
         # Calculate results
@@ -150,7 +172,9 @@ class SpaceRocks:
             'survival_time_ms': survival_time_ms,
             'score': self.score,
             'died': self.current_events['died'],
-            'reward_components': self.last_reward_components
+            'reward_components': self.last_reward_components,
+            'ep_shots_fired': self.ep_shot_fired,     
+            'ep_asteroids_hit': self.ep_asteroids_hit  
         }
 
         # standard rl tuple : (observation, reward, done, info)
@@ -187,9 +211,11 @@ class SpaceRocks:
         for asteroid in self.asteroids[:]:
             for bullet in self.bullets[:]:
                 if bullet.position.distance_to(asteroid.position) < asteroid.radius:
+                    
                     self.score += 1
-                    # shooting not defined yet for base rl
-                    #self.current_events['destroyed'] += 1 # LOG EVENT
+                    self.current_events['destroyed'] += 1 
+                    self.ep_asteroids_hit += 1
+                    
                     self.asteroids.remove(asteroid)
                     
                     is_penetrating = (self.active_powerup_type == "penetration" and current_time < self.power_up_expiry)
@@ -208,12 +234,12 @@ class SpaceRocks:
 
                     if not is_shield_active:
                         self.done = True # Set flag instead of destroying spaceship
-                        self.current_events['died'] = True # LOG EVENT
+                        self.current_events['died'] = True # 
                         break
                     else:
                         self.asteroids.remove(asteroid)
-                        self.current_events['shield_hit'] += 1 # LOG EVENT
-                        # Allowing multi hit shield
+                        # self.current_events['shield_hit'] += 1 
+                        # can add small incentive to crash into some asteroids... 
 
         # Spaceship-PowerUp Collision 
         
@@ -235,7 +261,7 @@ class SpaceRocks:
 
             # Asteroid Scaling
             elapsed_ms = current_time - self.start_time
-            if current_time - self.last_ast_spwan_time > self.ast_spawn_interval:
+            if current_time - self.last_ast_spawn_time > self.ast_spawn_interval:
                 if elapsed_ms < 4000:
                     spawn_count = 1
                 else:
@@ -246,7 +272,7 @@ class SpaceRocks:
                 for _ in range(spawn_count):
                     self.add_asteroid()
                 
-                self.last_ast_spwan_time = current_time
+                self.last_ast_spawn_time = current_time
 
                 # Gradually increase difficulty
                 if self.ast_spawn_interval > 1200:
@@ -314,7 +340,7 @@ class SpaceRocks:
                     asteroid_obs.extend([0.0 ,0.0 ,0.0, 0.0])
         
         else: 
-            asteroid_obs = [0.0] * 12
+            asteroid_obs = [0.0] * 12 # 3 asteroids * 4 data points
 
 
         ship_obs = [
@@ -338,22 +364,25 @@ class SpaceRocks:
             "distance": 0.0, 
             "movement_penalty": 0.0, 
             "escape_reward": 0.0,
-            "center_reward" : 0.0
+            "center_reward" : 0.0,
+            "hit_reward" : 0.0,
+            "shoot_penalty" : 0.0,
+            "aim_reward" : 0.0
         }
 
         # death reward 
         if self.current_events['died']:
-            comp["death"] = -100.0
+            comp["death"] = -70.0
             self.last_reward_components = comp
-            return -100.0
+            return -70.0
 
         if self.spaceship and not self.done:
-            comp["survival"] = 0.2
+            comp["survival"] = 0.05
 
-            if action != 0:
-                comp["movement_penalty"] = -0.01 
-            else:
-                comp["movement_penalty"] = 0.0
+            #if action in [self.spaceship.ACTION_FORWARD, self.spaceship.ACTION_BACKWARD]:
+            #    comp["movement_penalty"] = -0.001
+            #else:
+            #    comp["movement_penalty"] = 0.0
 
             # center - bias reward/penalty - soft circular barier
             center_position = (400,300)
@@ -370,16 +399,15 @@ class SpaceRocks:
                 comp["center_reward"] =  max(0, 0.1 * (1.0 - (taper_distance / max_taper_range)))
 
 
-        #comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
-        #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
-        
-        
-        #if self.current_events.get('fired', False):
-        #   comp["shooting_penalty"] = -0.1  
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
 
-        if self.spaceship and not self.done:            
-            comp["still_penalty"] = +0.001
-        
+            if self.current_events.get('fired', False):
+                comp["shooting_penalty"] = -0.1
+            
+            #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
+                  
+            
+            # avoidance calculations
             if self.asteroids:
                 sorted_asteroids = sorted(
                     self.asteroids, 
@@ -389,6 +417,7 @@ class SpaceRocks:
                 for i, ast in enumerate(sorted_asteroids):
 
                     dist = get_toroidal_distance(self.spaceship.position, ast.position)
+                    ast_to_ship_vec = get_toroidal_vector(self.spaceship.position, ast.position)
 
                     # float weights to closest asteroids
                     # 100% for 1st, 50% for 2nd, 33% for 3rd
@@ -399,9 +428,9 @@ class SpaceRocks:
                         comp["distance"] -= ((150 - dist) / 1000.0 ) * w
                     
                         # vector of rock to ship
-                        toroidal_vec = get_toroidal_vector(self.spaceship.position, ast.position)
-                        if toroidal_vec.length() > 0: # Prevent division by zero
-                            away_from_rock = toroidal_vec.normalize()
+                        
+                        if ast_to_ship_vec.length() > 0: # Prevent division by zero
+                            away_from_rock = ast_to_ship_vec.normalize()
                         else:
                             away_from_rock = Vector2(0, 0)
 
@@ -410,6 +439,26 @@ class SpaceRocks:
                         # reward for flying away
                         escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
                         comp["escape_reward"] += escape_direction_score * 0.1 * w
+
+                # shooting calculations
+                if self.current_events.get('fired', False):
+                    
+                    closest_ast = min(
+                            self.asteroids, 
+                            key=lambda ast: get_toroidal_distance(self.spaceship.position, ast.position)
+                        )
+                    
+                    ship_to_ast_vec = - get_toroidal_vector(self.spaceship.position, closest_ast.position)
+                    ship_dir = self.spaceship.get_direction()
+
+                    if ship_to_ast_vec.length() > 0:
+                            
+                        ship_to_ast_dir = ship_to_ast_vec.normalize()
+                        alignment = ship_dir.dot(ship_to_ast_dir)
+
+                        if alignment > 0.70:
+                            comp['aim_reward'] = 1
+                            
 
         
         self.last_reward_components = comp

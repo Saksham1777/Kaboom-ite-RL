@@ -58,8 +58,8 @@ class Spaceship(GameObject):
     ACTION_ROT_R_SM  = 4
     ACTION_ROT_L_BG  = 5
     ACTION_ROT_R_BG  = 6
-    # ACTION_SHOOT   = 7  -- uncomment when ready
-    N_ACTIONS        = 7
+    ACTION_SHOOT     = 7  
+    N_ACTIONS        = 8
 
     
     def __init__(self, position, velocity):
@@ -74,6 +74,7 @@ class Spaceship(GameObject):
         # physics constants
         self.base_acc = 0.4
         self.friction = 0.94
+        self.rotate_friction = 0.94 # see where to implement
         self.max_base_speed = 10
     
     
@@ -92,8 +93,8 @@ class Spaceship(GameObject):
             self.rotate(-self.ROTATE_BIG)           
         elif action == self.ACTION_ROT_R_BG:
             self.rotate(+self.ROTATE_BIG)           
-        # elif action == self.ACTION_SHOOT:
-        #     return self.shoot()
+        elif action == self.ACTION_SHOOT:
+            return self.shoot()
 
 
     def rotate(self, delta_rad: float):
