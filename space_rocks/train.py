@@ -10,7 +10,7 @@ class SpaceRocksCallback(BaseCallback):
     """
     def __init__(self, verbose = 0):
         super(SpaceRocksCallback, self).__init__(verbose)
-        self.action_counts = {i: 0 for i in range(8)}
+        self.action_counts = {i: 0 for i in range(6)}
 
     def _on_step(self):
         # Log Action Distribution
@@ -46,7 +46,7 @@ class SpaceRocksCallback(BaseCallback):
             for act, count in self.action_counts.items():
                 self.logger.record(f"actions/act_{act}_pct", count / total)
 
-            self.action_counts = {i: 0 for i in range(8)}
+            self.action_counts = {i: 0 for i in range(6)}
         
         return True
     
@@ -60,7 +60,7 @@ def linear_schedule(start_lr: float, end_lr: float):
         return end_lr + (start_lr - end_lr) * progress_remaining
     return func
 
-version = 26
+version = 36
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
@@ -81,19 +81,20 @@ model = PPO(
     env, 
     verbose=1, 
     tensorboard_log=log_dir,
-    learning_rate=linear_schedule(start_lr=3e-4, end_lr=2e-4),
+    learning_rate=3e-4,
     gamma=0.995,
-    n_steps=2048, # Collect 2048 frames before updating
+    n_steps=4096, # Collect 2048 frames before updating
     batch_size = 128,
-    n_epochs = 8,
-    ent_coef=0.02,
+    n_epochs = 10,
+    ent_coef=0.01,
+    clip_range=0.2,
     policy_kwargs=policy_kwargs,
 )
 
 # 4. Train with the Callback
 print("Training started. Open TensorBoard to see results.")
 model.learn(
-    total_timesteps=700000, 
+    total_timesteps=1200000, 
     callback=SpaceRocksCallback(),
     tb_log_name=f"PPO_run_{version}"
 )

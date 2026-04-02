@@ -2,7 +2,7 @@ import random
 import pygame
 from pygame.math import Vector2
 from pygame.transform import rotozoom
-from utils import load_sprite
+from utils import load_sprite, get_toroidal_distance
 import math
 
 UP = Vector2(0, -1)
@@ -40,26 +40,26 @@ class GameObject:
             self.position.y = height + buffer
     
     def collision_with(self, other_obj):
-        distance_bw = self.position.distance_to(other_obj.position)
+        distance_bw = get_toroidal_distance(self.position, other_obj.position)
         return distance_bw < self.radius + other_obj.radius
     
 class Spaceship(GameObject):
    
     _base_sprite = None
 
-    ROTATE_SMALL = math.radians(20)
-    ROTATE_BIG = math.radians(45)
+    ROTATE_SMALL = math.radians(2)
+    ROTATE_BIG = math.radians(5)
 
     # action id mapping
     ACTION_NOOP      = 0
     ACTION_FORWARD   = 1
     ACTION_BACKWARD  = 2 
-    ACTION_ROT_L_SM  = 3
-    ACTION_ROT_R_SM  = 4
-    ACTION_ROT_L_BG  = 5
-    ACTION_ROT_R_BG  = 6
-    ACTION_SHOOT     = 7  
-    N_ACTIONS        = 8
+    #ACTION_ROT_L_SM  = 3
+    #ACTION_ROT_R_SM  = 4
+    ACTION_ROT_L_BG  = 3
+    ACTION_ROT_R_BG  = 4
+    ACTION_SHOOT     = 5  
+    N_ACTIONS        = 6
 
     
     def __init__(self, position, velocity):
@@ -70,11 +70,12 @@ class Spaceship(GameObject):
         super().__init__(position, Spaceship._base_sprite, velocity)
         
         self.angle_rad = 0.0
+        self.angular_velocity = 0.0
 
         # physics constants
         self.base_acc = 0.4
         self.friction = 0.94
-        self.rotate_friction = 0.94 # see where to implement
+        self.angular_friction = 0.90 
         self.max_base_speed = 10
     
     
@@ -85,10 +86,10 @@ class Spaceship(GameObject):
             self.apply_thrust(1,current_time, start_time)
         elif action == self.ACTION_BACKWARD:
             self.apply_thrust(-1, current_time, start_time)
-        elif action == self.ACTION_ROT_L_SM:
-            self.rotate(-self.ROTATE_SMALL)        
-        elif action == self.ACTION_ROT_R_SM:
-            self.rotate(+self.ROTATE_SMALL)         
+        #elif action == self.ACTION_ROT_L_SM:
+        #    self.rotate(-self.ROTATE_SMALL)        
+        #elif action == self.ACTION_ROT_R_SM:
+        #    self.rotate(+self.ROTATE_SMALL)         
         elif action == self.ACTION_ROT_L_BG:
             self.rotate(-self.ROTATE_BIG)           
         elif action == self.ACTION_ROT_R_BG:
@@ -97,10 +98,8 @@ class Spaceship(GameObject):
             return self.shoot()
 
 
-    def rotate(self, delta_rad: float):
-        # Helper to update angle and keep it within 0-359 range.
-        self.angle_rad += delta_rad
-        self.angle_rad = math.atan2(math.sin(self.angle_rad), math.cos(self.angle_rad))
+    def rotate(self, angular_thrust: float):
+        self.angular_velocity += angular_thrust
 
     def get_direction(self):
         # unit vector of curr dir - used by acc + shoot
@@ -124,7 +123,18 @@ class Spaceship(GameObject):
             self.velocity.scale_to_length(max_speed)
 
     def update(self):
+        # engine of linear and rotationaly velocity - called every frame 
+        # hence friction calculation must be here
+        
+        # linear phy
         self.velocity *= self.friction
+
+        # angular phy
+        dt = 1 # implicit delta time = 1
+        self.angle_rad += self.angular_velocity * dt 
+        self.angular_velocity *= self.angular_friction
+
+        self.angle_rad = math.atan2(math.sin(self.angle_rad) , math.cos(self.angle_rad))
 
     def shoot(self):
         direction = self.get_direction()

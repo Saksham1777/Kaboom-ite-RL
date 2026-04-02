@@ -14,12 +14,12 @@ class SpaceRocksEnv(gym.Env):
         self.render_mode = render_mode
         self.game = SpaceRocks(render_mode=(render_mode == "human"))
 
-        self.action_space = spaces.Discrete(8)
+        self.action_space = spaces.Discrete(6)
 
         self.observation_space = spaces.Box(
             low = -np.inf,
             high=np.inf, 
-            shape=(18,), # 6 for spaceship + 4 per asteroid x 3 asteroids 
+            shape=(31,), # 7 for spaceship + 4 per asteroid x 3 asteroids +  4 per bullet x 3 bullets
             dtype=np.float32
         )
 

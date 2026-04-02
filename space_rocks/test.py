@@ -5,7 +5,7 @@ import os
 
 def main():
 
-    version_to_test = 26
+    version_to_test = 36
     models_dir = "./saved_models/"
     
     model_path = os.path.join(models_dir, f"spacerocks_ai_v{version_to_test}")
@@ -30,7 +30,7 @@ def main():
             # deterministic=True ensures it picks the most confident move
             action, _states = model.predict(obs, deterministic=True)
             
-            # Apply the action (0-6) to the ship
+            # Apply the action (0-7) to the ship
             obs, reward, terminated, truncated, info = env.step(action)
             
             # Draw the frame to the window

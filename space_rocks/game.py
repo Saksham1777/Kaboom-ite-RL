@@ -287,72 +287,89 @@ class SpaceRocks:
         """Returns the state of the game for the AI to 'see'."""
         
         if self.spaceship:
-            ship_x = self.spaceship.position.x / 800
-            ship_y = self.spaceship.position.y / 600
-
-            # base max speed is 10 but allowed to increase to 12 in 50 sec
             ship_vel_x = self.spaceship.velocity.x / 12
             ship_vel_y = self.spaceship.velocity.y / 12
-
             ship_sin, ship_cos = self.spaceship.get_angle_obs()
+            ship_ang_vel = self.spaceship.angular_velocity / 0.5
         else:
-            ship_x, ship_y, ship_vel_x, ship_vel_y, ship_sin, ship_cos = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            ship_vel_x, ship_vel_y, ship_sin, ship_cos, ship_ang_vel = 0.0, 0.0, 0.0, 0.0, 0.0
 
+        # --- Sort asteroids FIRST so we can use sorted_asteroids everywhere below ---
         asteroid_obs = []
+        alignment_to_closest = 0.0
+        dist_to_closest = 1.0
 
-        # 3 closest asteroid calculations
         if self.asteroids and self.spaceship:
-            sorted_asteroids = sorted(self.asteroids[:], key = lambda ast: get_toroidal_distance(self.spaceship.position, ast.position))
-            
+            sorted_asteroids = sorted(
+                self.asteroids[:],
+                key=lambda ast: get_toroidal_distance(self.spaceship.position, ast.position)
+            )
+
+            # Alignment + distance to closest asteroid
+            closest_vec = get_toroidal_vector(self.spaceship.position, sorted_asteroids[0].position)
+            dist_to_closest = get_toroidal_distance(
+                self.spaceship.position, sorted_asteroids[0].position
+            ) / 1000.0
+
+            if closest_vec.length() > 0:
+                alignment_to_closest = self.spaceship.get_direction().dot(closest_vec.normalize())
+            else:
+                alignment_to_closest = 0.0
+
+            # 3 closest asteroids
             for i in range(3):
                 if i < len(sorted_asteroids):
                     ast = sorted_asteroids[i]
 
-                    # Calculate absolute pixel difference first
                     px_rel_x = ast.position.x - self.spaceship.position.x
                     px_rel_y = ast.position.y - self.spaceship.position.y
 
-                    # Toroidal Wrap for X (800 width)
-                    if px_rel_x > 400:
-                        px_rel_x -= 800
-                    elif px_rel_x < -400:
-                        px_rel_x += 800
+                    if px_rel_x > 400:  px_rel_x -= 800
+                    elif px_rel_x < -400: px_rel_x += 800
 
-                    # Toroidal Wrap for Y (600 height)
-                    if px_rel_y > 300:
-                        px_rel_y -= 600
-                    elif px_rel_y < -300:
-                        px_rel_y += 600
+                    if px_rel_y > 300:  px_rel_y -= 600
+                    elif px_rel_y < -300: px_rel_y += 600
 
-                    # Normalize the wrapped relative distances
-                    rel_x = px_rel_x / 800.0
-                    rel_y = px_rel_y / 600.0
-                    
-                    ast_vel_x = ast.velocity.x / 10.0
-                    ast_vel_y = ast.velocity.y / 10.0
-                
                     asteroid_obs.extend([
-                        rel_x, rel_y, 
-                        ast_vel_x, ast_vel_y
+                        px_rel_x / 800.0,
+                        px_rel_y / 600.0,
+                        ast.velocity.x / 10.0,
+                        ast.velocity.y / 10.0
                     ])
-                
-                else: 
-                    asteroid_obs.extend([0.0 ,0.0 ,0.0, 0.0])
-        
-        else: 
-            asteroid_obs = [0.0] * 12 # 3 asteroids * 4 data points
+                else:
+                    asteroid_obs.extend([0.0, 0.0, 0.0, 0.0])
+        else:
+            asteroid_obs = [0.0] * 12
 
+        # Bullet observations
+        bullet_obs = []
+        max_bullets_to_track = 3
+        if self.spaceship and self.bullets:
+            for i in range(max_bullets_to_track):
+                if i < len(self.bullets):
+                    b = self.bullets[i]
+                    b_wrapped_vec = get_toroidal_vector(self.spaceship.position, b.position)
+                    bullet_obs.extend([
+                        b_wrapped_vec.x / 800,
+                        b_wrapped_vec.y / 600,
+                        b.velocity.x / 12,
+                        b.velocity.y / 12
+                    ])
+                else:
+                    bullet_obs.extend([0.0, 0.0, 0.0, 0.0])
+        else:
+            bullet_obs = [0.0] * (max_bullets_to_track * 4)
 
         ship_obs = [
-            ship_x, ship_y,
             ship_vel_x, ship_vel_y,
-            ship_sin, ship_cos
+            ship_sin, ship_cos,
+            ship_ang_vel,
+            alignment_to_closest,
+            dist_to_closest
         ]
 
-        obs = ship_obs + asteroid_obs        
-
-        # rl req float32
-        return np.array(obs, dtype = np.float32)
+        obs = ship_obs + asteroid_obs + bullet_obs
+        return np.array(obs, dtype=np.float32)  # shape: (29,)
 
 
     def _calculate_reward(self, action):
@@ -362,60 +379,60 @@ class SpaceRocks:
             "survival": 0.0, 
             "death": 0.0, 
             "distance": 0.0, 
-            "movement_penalty": 0.0, 
-            "escape_reward": 0.0,
-            "center_reward" : 0.0,
+            #"movement_penalty": 0.0, 
+            #"escape_reward": 0.0,
+            "wall_penalty" : 0.0,
             "hit_reward" : 0.0,
             "shoot_penalty" : 0.0,
-            "aim_reward" : 0.0
+            "aim_reward" : 0.0,
+            "tracking_reward" : 0.0
         }
 
-        # death reward 
+        # 1. Death Penalty
         if self.current_events['died']:
             comp["death"] = -70.0
             self.last_reward_components = comp
             return -70.0
 
         if self.spaceship and not self.done:
-            comp["survival"] = 0.05
+            # 2. Base Survival 
+            comp["survival"] = 0.02
 
             #if action in [self.spaceship.ACTION_FORWARD, self.spaceship.ACTION_BACKWARD]:
             #    comp["movement_penalty"] = -0.001
             #else:
             #    comp["movement_penalty"] = 0.0
 
-            # center - bias reward/penalty - soft circular barier
-            center_position = (400,300)
-            max_distance = 500
-            safe_zone = 250
+            # 3. Center Bias Reward
+            margin = 80
+            x, y = self.spaceship.position.x, self.spaceship.position.y
+            if x < margin or x > 800-margin or y < margin or y > 600-margin:
+                comp["wall_penalty"] = -0.05
 
-            distance_from_center = self.spaceship.position.distance_to(center_position)
-
-            if distance_from_center < safe_zone:
-                comp["center_reward"] = 0.1
-            else:
-                max_taper_range = max_distance - safe_zone
-                taper_distance = distance_from_center - safe_zone
-                comp["center_reward"] =  max(0, 0.1 * (1.0 - (taper_distance / max_taper_range)))
-
-
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
-
-            if self.current_events.get('fired', False):
-                comp["shooting_penalty"] = -0.1
+            # 4. Destroying Asteroid Reward
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 5.0
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
-                  
             
-            # avoidance calculations
+            
             if self.asteroids:
+                
                 sorted_asteroids = sorted(
                     self.asteroids, 
                      key=lambda ast: get_toroidal_distance(self.spaceship.position, ast.position)
                 )[:3]
 
-                for i, ast in enumerate(sorted_asteroids):
+                ship_dir = self.spaceship.get_direction()
 
+                closest = sorted_asteroids[0]
+                closest_vec = get_toroidal_vector(self.spaceship.position, closest.position)
+                if closest_vec.length() > 0:
+                    alignment_to_closest = ship_dir.dot(closest_vec.normalize())
+                    comp["tracking_reward"] = alignment_to_closest * 0.03
+
+
+                for i, ast in enumerate(sorted_asteroids):
+                    # avoidance calculations
                     dist = get_toroidal_distance(self.spaceship.position, ast.position)
                     ast_to_ship_vec = get_toroidal_vector(self.spaceship.position, ast.position)
 
@@ -424,43 +441,36 @@ class SpaceRocks:
                     w = 1.0 / (i + 1.0)
 
                     if dist < 150:
-
-                        comp["distance"] -= ((150 - dist) / 1000.0 ) * w
+                        comp["distance"] -= ((150 - dist) / 150.0 ) * 0.15 * w
                     
                         # vector of rock to ship
-                        
                         if ast_to_ship_vec.length() > 0: # Prevent division by zero
                             away_from_rock = ast_to_ship_vec.normalize()
                         else:
                             away_from_rock = Vector2(0, 0)
 
-                        # dot product of vel to see if it points away 
+                        # dot product of vel to see if it points away - reward for flying away
                         # +1 = perfectly opp, -1 = same direction
-                        # reward for flying away
                         escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
-                        comp["escape_reward"] += escape_direction_score * 0.1 * w
+                        #if escape_direction_score > 0:
+                        #   comp["escape_reward"] += escape_direction_score * 0.1 * w
 
                 # shooting calculations
+                    if self.asteroids:
+                        closest_ast = sorted_asteroids[0]
+                        ast_vec = get_toroidal_vector(self.spaceship.position, closest_ast.position)
+                        if ast_vec.length() > 0:
+                            alignment = ship_dir.dot(ast_vec.normalize())
+                            comp["tracking_reward"] = alignment * 0.03
+                                       
+                # trigger discipline
                 if self.current_events.get('fired', False):
-                    
-                    closest_ast = min(
-                            self.asteroids, 
-                            key=lambda ast: get_toroidal_distance(self.spaceship.position, ast.position)
-                        )
-                    
-                    ship_to_ast_vec = - get_toroidal_vector(self.spaceship.position, closest_ast.position)
-                    ship_dir = self.spaceship.get_direction()
-
-                    if ship_to_ast_vec.length() > 0:
-                            
-                        ship_to_ast_dir = ship_to_ast_vec.normalize()
-                        alignment = ship_dir.dot(ship_to_ast_dir)
-
-                        if alignment > 0.70:
-                            comp['aim_reward'] = 1
-                            
-
-        
+                        if alignment > 0.92:
+                            comp['aim_reward'] = 2.0 
+                            comp['shoot_penalty'] = 0.0 # Free shot!
+                        else:
+                            comp['shoot_penalty'] = -1.5 # Missed shot tax
+                                   
         self.last_reward_components = comp
         return sum(comp.values()) 
 
