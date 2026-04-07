@@ -60,7 +60,7 @@ def linear_schedule(start_lr: float, end_lr: float):
         return end_lr + (start_lr - end_lr) * progress_remaining
     return func
 
-version = 36
+version = 52
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
@@ -94,7 +94,7 @@ model = PPO(
 # 4. Train with the Callback
 print("Training started. Open TensorBoard to see results.")
 model.learn(
-    total_timesteps=1200000, 
+    total_timesteps=600000, 
     callback=SpaceRocksCallback(),
     tb_log_name=f"PPO_run_{version}"
 )

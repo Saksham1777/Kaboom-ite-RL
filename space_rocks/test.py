@@ -5,7 +5,7 @@ import os
 
 def main():
 
-    version_to_test = 36
+    version_to_test = 52
     models_dir = "./saved_models/"
     
     model_path = os.path.join(models_dir, f"spacerocks_ai_v{version_to_test}")

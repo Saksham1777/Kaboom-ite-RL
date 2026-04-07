@@ -381,11 +381,13 @@ class SpaceRocks:
             "distance": 0.0, 
             #"movement_penalty": 0.0, 
             #"escape_reward": 0.0,
-            "wall_penalty" : 0.0,
             "hit_reward" : 0.0,
-            "shoot_penalty" : 0.0,
+            #"shoot_penalty" : 0.0,
             "aim_reward" : 0.0,
-            "tracking_reward" : 0.0
+            "tracking_reward" : 0.0,
+            "spin_penalty" : 0.0,
+            "center_reward" : 0.0,
+            "movement_reward" : 0.0
         }
 
         # 1. Death Penalty
@@ -404,15 +406,22 @@ class SpaceRocks:
             #    comp["movement_penalty"] = 0.0
 
             # 3. Center Bias Reward
-            margin = 80
-            x, y = self.spaceship.position.x, self.spaceship.position.y
-            if x < margin or x > 800-margin or y < margin or y > 600-margin:
-                comp["wall_penalty"] = -0.05
-
+            center_x, center_y = 400, 300
+            center_pos = pygame.math.Vector2(center_x, center_y)
+            dist_from_center = get_toroidal_distance(self.spaceship.position, center_pos)
+            max_dist = 200  # approx corner distance
+            comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.04
+                        
             # 4. Destroying Asteroid Reward
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 5.0
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 7.0
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
+
+            comp['spin_penalty'] = -0.07 * abs(self.spaceship.angular_velocity)
+
+            speed = self.spaceship.velocity.length()
+            if speed > 1.0 and speed < 6.0: 
+                comp["movement_reward"] = 0.005
             
             
             if self.asteroids:
@@ -426,9 +435,10 @@ class SpaceRocks:
 
                 closest = sorted_asteroids[0]
                 closest_vec = get_toroidal_vector(self.spaceship.position, closest.position)
+                closest_dist = get_toroidal_distance(self.spaceship.position, closest.position)
                 if closest_vec.length() > 0:
                     alignment_to_closest = ship_dir.dot(closest_vec.normalize())
-                    comp["tracking_reward"] = alignment_to_closest * 0.03
+                    #comp["tracking_reward"] = alignment_to_closest * 0.04
 
 
                 for i, ast in enumerate(sorted_asteroids):
@@ -440,33 +450,25 @@ class SpaceRocks:
                     # 100% for 1st, 50% for 2nd, 33% for 3rd
                     w = 1.0 / (i + 1.0)
 
-                    if dist < 150:
-                        comp["distance"] -= ((150 - dist) / 150.0 ) * 0.15 * w
+                    if dist < 200:
+                        comp["distance"] -= ((200 - dist) / 200.0 ) * 0.2 * w
                     
                         # vector of rock to ship
-                        if ast_to_ship_vec.length() > 0: # Prevent division by zero
-                            away_from_rock = ast_to_ship_vec.normalize()
-                        else:
-                            away_from_rock = Vector2(0, 0)
+                        #if ast_to_ship_vec.length() > 0: # Prevent division by zero
+                        #    away_from_rock = ast_to_ship_vec.normalize()
+                        #else:
+                        #    away_from_rock = Vector2(0, 0)
 
                         # dot product of vel to see if it points away - reward for flying away
                         # +1 = perfectly opp, -1 = same direction
-                        escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
+                        #escape_direction_score = self.spaceship.velocity.dot(away_from_rock)
                         #if escape_direction_score > 0:
                         #   comp["escape_reward"] += escape_direction_score * 0.1 * w
-
-                # shooting calculations
-                    if self.asteroids:
-                        closest_ast = sorted_asteroids[0]
-                        ast_vec = get_toroidal_vector(self.spaceship.position, closest_ast.position)
-                        if ast_vec.length() > 0:
-                            alignment = ship_dir.dot(ast_vec.normalize())
-                            comp["tracking_reward"] = alignment * 0.03
                                        
                 # trigger discipline
                 if self.current_events.get('fired', False):
-                        if alignment > 0.92:
-                            comp['aim_reward'] = 2.0 
+                        if alignment_to_closest > 0.90:
+                            comp['aim_reward'] = 1.2
                             comp['shoot_penalty'] = 0.0 # Free shot!
                         else:
                             comp['shoot_penalty'] = -1.5 # Missed shot tax
