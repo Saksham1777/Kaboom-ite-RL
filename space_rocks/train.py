@@ -60,7 +60,7 @@ def linear_schedule(start_lr: float, end_lr: float):
         return end_lr + (start_lr - end_lr) * progress_remaining
     return func
 
-version = 55
+version = 58
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
@@ -89,6 +89,7 @@ model = PPO(
     ent_coef=0.01,
     clip_range=0.2,
     policy_kwargs=policy_kwargs,
+    seed = 42
 )
 
 # 4. Train with the Callback

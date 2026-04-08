@@ -413,11 +413,12 @@ class SpaceRocks:
             comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.04
                         
             # 4. Destroying Asteroid Reward
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 7.0
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 6.0
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
-            comp['spin_penalty'] = -0.08 * abs(self.spaceship.angular_velocity)
+            angular_vel = abs(self.spaceship.angular_velocity)
+            comp['spin_penalty'] = -0.08 * angular_vel - 0.25 * (angular_vel ** 2)
 
             #speed = self.spaceship.velocity.length()
             #if speed > 1.0 and speed < 4.0: 
@@ -468,13 +469,13 @@ class SpaceRocks:
                 # trigger discipline
                 if self.current_events.get('fired', False):
                         if alignment_to_closest > 0.90:
-                            comp['aim_reward'] = 1.5        # Perfect shot bonus
+                            comp['aim_reward'] = 0.6      # Perfect shot bonus
                             comp['shoot_penalty'] = 0.0     # Free shot
-                        elif alignment_to_closest > 0.80:
-                            comp['aim_reward'] = 0.6        # Good aim
+                        elif alignment_to_closest > 0.70:
+                            comp['aim_reward'] = 0.4        # Good aim
                             comp['shoot_penalty'] = -0.4    # Small tax
-                        elif alignment_to_closest > 0.65:
-                            comp['aim_reward'] = 0.1        # Decent aim
+                        elif alignment_to_closest > 0.60:
+                            comp['aim_reward'] = 0.00        # Decent aim
                             comp['shoot_penalty'] = -0.9    # Moderate tax
                         else:
                             comp['aim_reward'] = 0.0

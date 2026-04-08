@@ -3,6 +3,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import pygame
 from game import SpaceRocks
+import random
 
 class SpaceRocksEnv(gym.Env):
 
@@ -28,6 +29,10 @@ class SpaceRocksEnv(gym.Env):
 
         # Standard Gymnasium seed handling
         super().reset(seed = seed)
+
+        # Lock down gloabal random modeule with seed
+        if seed is not None:
+            random.seed(seed)
 
         # Reset the underlying game engine
         obs = self.game.reset()
