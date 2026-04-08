@@ -417,11 +417,11 @@ class SpaceRocks:
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
-            comp['spin_penalty'] = -0.07 * abs(self.spaceship.angular_velocity)
+            comp['spin_penalty'] = -0.08 * abs(self.spaceship.angular_velocity)
 
-            speed = self.spaceship.velocity.length()
-            if speed > 1.0 and speed < 6.0: 
-                comp["movement_reward"] = 0.005
+            #speed = self.spaceship.velocity.length()
+            #if speed > 1.0 and speed < 4.0: 
+                #comp["movement_reward"] = 0.005
             
             
             if self.asteroids:
@@ -438,7 +438,7 @@ class SpaceRocks:
                 closest_dist = get_toroidal_distance(self.spaceship.position, closest.position)
                 if closest_vec.length() > 0:
                     alignment_to_closest = ship_dir.dot(closest_vec.normalize())
-                    #comp["tracking_reward"] = alignment_to_closest * 0.04
+                    #comp["tracking_reward"] = alignment_to_closest * 0.005
 
 
                 for i, ast in enumerate(sorted_asteroids):
@@ -468,10 +468,17 @@ class SpaceRocks:
                 # trigger discipline
                 if self.current_events.get('fired', False):
                         if alignment_to_closest > 0.90:
-                            comp['aim_reward'] = 1.2
-                            comp['shoot_penalty'] = 0.0 # Free shot!
+                            comp['aim_reward'] = 1.5        # Perfect shot bonus
+                            comp['shoot_penalty'] = 0.0     # Free shot
+                        elif alignment_to_closest > 0.80:
+                            comp['aim_reward'] = 0.6        # Good aim
+                            comp['shoot_penalty'] = -0.4    # Small tax
+                        elif alignment_to_closest > 0.65:
+                            comp['aim_reward'] = 0.1        # Decent aim
+                            comp['shoot_penalty'] = -0.9    # Moderate tax
                         else:
-                            comp['shoot_penalty'] = -1.5 # Missed shot tax
+                            comp['aim_reward'] = 0.0
+                            comp['shoot_penalty'] = -1.5    # Wild shot, full penalty
                                    
         self.last_reward_components = comp
         return sum(comp.values()) 

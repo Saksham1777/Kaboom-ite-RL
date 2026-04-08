@@ -60,7 +60,7 @@ def linear_schedule(start_lr: float, end_lr: float):
         return end_lr + (start_lr - end_lr) * progress_remaining
     return func
 
-version = 52
+version = 55
 
 log_dir = "./logs/spacerocks_tensorboard/"
 os.makedirs(log_dir, exist_ok=True)
