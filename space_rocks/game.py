@@ -422,15 +422,15 @@ class SpaceRocks:
             center_pos = pygame.math.Vector2(center_x, center_y)
             dist_from_center = get_toroidal_distance(self.spaceship.position, center_pos)
             max_dist = 150  # approx corner distance
-            comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.05
+            comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.1
                         
             # 4. Destroying Asteroid Reward
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 8.0
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
             angular_vel = abs(self.spaceship.angular_velocity)
-            comp['spin_penalty'] = -0.07 * angular_vel - 0.25 * (angular_vel ** 2)            
+            comp['spin_penalty'] = -0.09 * angular_vel - 0.8 * (angular_vel ** 2)            
             
             if self.asteroids:  
 
@@ -468,17 +468,18 @@ class SpaceRocks:
                                        
                 # trigger discipline
                 if self.current_events.get('fired', False):
+ 
                         if not visible_asteroids:
                             comp['aim_reward'] = 0.0
                             comp['shoot_penalty'] = -1.2 
                         elif alignment_to_closest > 0.90:
-                            comp['aim_reward'] = 0.6      # Perfect shot bonus
+                            comp['aim_reward'] = 0.6   # Perfect shot bonus
                             comp['shoot_penalty'] = 0.0     # Free shot
                         elif alignment_to_closest > 0.70:
-                            comp['aim_reward'] = 0.4        # Good aim
+                            comp['aim_reward'] = 0.4 
                             comp['shoot_penalty'] = -0.2    # Small tax
                         elif alignment_to_closest > 0.55:
-                            comp['aim_reward'] = 0.1      # Decent aim
+                            comp['aim_reward'] = 0.1
                             comp['shoot_penalty'] = -0.5    # Moderate tax
                         else:
                             comp['aim_reward'] = 0.0
