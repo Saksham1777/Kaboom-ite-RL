@@ -101,7 +101,7 @@ def main():
         return
 
     if args.mode == 'v':
-        env = SpaceRocksEnv(render_mode= "human")
+        env = SpaceRocksEnv(render_mode= "human", frame_skip=4)
         run_visual_mode(model, env, args.episodes)
         env.close()
     elif args.mode == 'b':

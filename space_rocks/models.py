@@ -47,8 +47,8 @@ class Spaceship(GameObject):
    
     _base_sprite = None
 
-    ROTATE_SMALL = math.radians(2)
-    ROTATE_BIG = math.radians(5)
+    #ROTATE_SMALL = math.radians(2)
+    ROTATE_BIG = math.radians(1.2)
 
     # action id mapping
     ACTION_NOOP      = 0
@@ -75,7 +75,7 @@ class Spaceship(GameObject):
         # physics constants
         self.base_acc = 0.4
         self.friction = 0.94
-        self.angular_friction = 0.90 
+        self.angular_friction = 0.70 
         self.max_base_speed = 10
     
     

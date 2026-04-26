@@ -27,7 +27,7 @@ class SpaceRocks:
         self.score = 0
         self.spaceship = None
         self.bullets = []
-        self.max_steps = 10000
+        #self.max_steps = 10000
 
         # asteroid
         self.asteroids = []
@@ -51,7 +51,7 @@ class SpaceRocks:
         self.ep_asteroids_hit = 0
 
         # RL Episode Management
-        self.max_steps = 3000  # 3000 frames = ~50 seconds at 60fps
+        #self.max_steps = 3000  # 3000 frames = ~50 seconds at 60fps
         self.current_step = 0
         self.done = False
         self.truncated = False
@@ -159,9 +159,9 @@ class SpaceRocks:
 
         # Check step limits
         self.current_step += 1
-        if self.current_step >= self.max_steps:
-            self.truncated = True
-            self.done = True
+        #if self.current_step >= self.max_steps:
+        #    self.truncated = True
+        #    self.done = True
 
         # Calculate results
         reward = self._calculate_reward(action)
@@ -425,12 +425,12 @@ class SpaceRocks:
             comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.1
                         
             # 4. Destroying Asteroid Reward
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.0
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.5
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
             angular_vel = abs(self.spaceship.angular_velocity)
-            comp['spin_penalty'] = -0.09 * angular_vel - 0.8 * (angular_vel ** 2)            
+            comp['spin_penalty'] = -0.2 * angular_vel - 2.0 * (angular_vel ** 2)            
             
             if self.asteroids:  
 
