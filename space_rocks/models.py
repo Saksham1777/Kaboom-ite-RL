@@ -48,7 +48,7 @@ class Spaceship(GameObject):
     _base_sprite = None
 
     #ROTATE_SMALL = math.radians(2)
-    ROTATE_BIG = math.radians(1.2)
+    ROTATE_BIG = math.radians(1.5)
 
     # action id mapping
     ACTION_NOOP      = 0

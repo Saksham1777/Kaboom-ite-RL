@@ -421,16 +421,16 @@ class SpaceRocks:
             center_x, center_y = 400, 300
             center_pos = pygame.math.Vector2(center_x, center_y)
             dist_from_center = get_toroidal_distance(self.spaceship.position, center_pos)
-            max_dist = 150  # approx corner distance
-            comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.1
+            max_dist = 250  # approx corner distance
+            comp["center_reward"] = max(0, (1 - dist_from_center / max_dist)) * 0.75
                         
             # 4. Destroying Asteroid Reward
-            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 10.5
+            comp["hit_reward"] = self.current_events.get('destroyed', 0) * 12
             
             #comp["powerup_reward"] = self.current_events.get('powerup', 0) * 15.0
 
             angular_vel = abs(self.spaceship.angular_velocity)
-            comp['spin_penalty'] = -0.2 * angular_vel - 2.0 * (angular_vel ** 2)            
+            comp['spin_penalty'] = -0.15 * angular_vel - 1.6 * (angular_vel ** 2)            
             
             if self.asteroids:  
 
@@ -464,26 +464,26 @@ class SpaceRocks:
                     # float weights to closest asteroids
                     w = 1.0 / (i + 1.0)
                     if dist < 200:
-                        comp["distance"] -= ((200 - dist) / 200.0 ) * 0.2 * w
+                        comp["distance"] -= ((200 - dist) / 200.0 ) * 0.75 * w
                                        
                 # trigger discipline
                 if self.current_events.get('fired', False):
  
                         if not visible_asteroids:
                             comp['aim_reward'] = 0.0
-                            comp['shoot_penalty'] = -1.2 
-                        elif alignment_to_closest > 0.90:
-                            comp['aim_reward'] = 0.6   # Perfect shot bonus
+                            comp['shoot_penalty'] = -2.75 
+                        elif alignment_to_closest > 0.92:
+                            comp['aim_reward'] = 1.9  # Perfect shot bonus
                             comp['shoot_penalty'] = 0.0     # Free shot
                         elif alignment_to_closest > 0.70:
-                            comp['aim_reward'] = 0.4 
-                            comp['shoot_penalty'] = -0.2    # Small tax
+                            comp['aim_reward'] = 1.0 
+                            comp['shoot_penalty'] = -0.4    # Small tax
                         elif alignment_to_closest > 0.55:
                             comp['aim_reward'] = 0.1
                             comp['shoot_penalty'] = -0.5    # Moderate tax
                         else:
                             comp['aim_reward'] = 0.0
-                            comp['shoot_penalty'] = -1.5    # Wild shot, full penalty
+                            comp['shoot_penalty'] = -1.75    # Wild shot, full penalty
                                    
         self.last_reward_components = comp
         return sum(comp.values()) 
